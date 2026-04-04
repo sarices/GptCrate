@@ -4,6 +4,37 @@
 
 ---
 
+## 推荐：使用 LuckMail 接码平台
+
+**强烈推荐使用 [LuckMail](https://mails.luckyous.com/EC36F88F) 接码平台！**
+
+- 注册地址：https://mails.luckyous.com/EC36F88F
+- 只需填写 API Key，其他配置代码已帮你搞定！
+- 自动获取邮箱、自动接收验证码、全自动注册
+
+---
+
+## 快速开始
+
+```bash
+# 1. 复制配置模板
+cp .env.example .env
+
+# 2. 编辑 .env，填写 LuckMail API Key
+# LUCKMAIL_API_KEY=你的API密钥
+
+# 3. 运行
+python gpt.py --once
+```
+
+或使用一键启动器（推荐）：
+
+```bash
+python start.py
+```
+
+---
+
 ## 环境要求
 
 - Python 3.8+
