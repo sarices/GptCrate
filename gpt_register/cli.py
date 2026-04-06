@@ -2,6 +2,7 @@ import argparse
 import json
 import os
 import random
+import secrets
 import sys
 import threading
 import time
@@ -10,6 +11,25 @@ from typing import Optional
 
 from . import context as ctx
 from . import mail, oauth, register
+
+
+# Resin 粘性代理配置
+RESIN_URL = os.getenv("RESIN_URL", "").strip()
+RESIN_PLATFORM = os.getenv("RESIN_PLATFORM", "Default").strip()
+RESIN_STICKY = os.getenv("RESIN_STICKY", "false").strip().lower() == "true"
+
+
+def _build_resin_proxy(resin_url: str, platform: str, account: str) -> str:
+    """将 Resin 网关地址转换为粘性代理 URL"""
+    import urllib.parse
+
+    parsed = urllib.parse.urlparse(resin_url)
+    token = parsed.username or parsed.password or ""
+    host = parsed.hostname or ""
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    username = urllib.parse.quote(f"{platform}.{account}", safe="")
+    password = urllib.parse.quote(token, safe="")
+    return f"{parsed.scheme}://{username}:{password}@{host}:{port}"
 
 
 def _disable_email_on_failure(email: str, tag: str = "") -> None:
@@ -296,6 +316,8 @@ def _spawn_worker_threads(
     count_target: Optional[int],
     remaining: Optional[list],
     stop_event: threading.Event,
+    resin_sticky: bool = False,
+    resin_platform: str = "Default",
 ) -> list[threading.Thread]:
     threads = []
     for tid in range(1, worker_count + 1):
@@ -310,6 +332,8 @@ def _spawn_worker_threads(
                 count_target,
                 remaining,
                 stop_event,
+                resin_sticky,
+                resin_platform,
             ),
             daemon=True,
         )
@@ -328,6 +352,8 @@ def _run_batch_mode(
     sleep_min: int,
     sleep_max: int,
     stop_event: threading.Event,
+    resin_sticky: bool = False,
+    resin_platform: str = "Default",
 ) -> None:
     remaining = [batch_count]
     actual_threads = min(thread_count, batch_count)
@@ -341,6 +367,8 @@ def _run_batch_mode(
             count_target=batch_count,
             remaining=remaining,
             stop_event=stop_event,
+            resin_sticky=effective_resin_sticky,
+            resin_platform=effective_resin_platform,
         )
     else:
         print(f"[*] 启动 {actual_threads} 个并发线程...")
@@ -353,6 +381,8 @@ def _run_batch_mode(
             count_target=batch_count,
             remaining=remaining,
             stop_event=stop_event,
+            resin_sticky=effective_resin_sticky,
+            resin_platform=effective_resin_platform,
         )
         try:
             for thread in threads:
@@ -376,6 +406,8 @@ def _run_loop_mode(
     sleep_min: int,
     sleep_max: int,
     stop_event: threading.Event,
+    resin_sticky: bool = False,
+    resin_platform: str = "Default",
 ) -> None:
     if thread_count <= 1:
         try:
@@ -388,6 +420,8 @@ def _run_loop_mode(
                 count_target=None,
                 remaining=None,
                 stop_event=stop_event,
+                resin_sticky=resin_sticky,
+                resin_platform=resin_platform,
             )
         except KeyboardInterrupt:
             print("\n[*] 收到中断信号，停止运行")
@@ -403,6 +437,8 @@ def _run_loop_mode(
         count_target=None,
         remaining=None,
         stop_event=stop_event,
+        resin_sticky=resin_sticky,
+        resin_platform=resin_platform,
     )
     try:
         while any(thread.is_alive() for thread in threads):
@@ -423,6 +459,8 @@ def _worker(
     count_target: Optional[int],
     remaining: Optional[list],
     stop_event: threading.Event,
+    resin_sticky: bool = False,
+    resin_platform: str = "Default",
 ) -> int:
     """单个注册工作线程，返回本线程成功注册数"""
     local_success = 0
@@ -446,6 +484,15 @@ def _worker(
         local_round += 1
         proxy_str = rotator.next() if len(rotator) > 0 else single_proxy
         tag = f"[T{worker_id}#{local_round}]"
+
+        # Resin 粘性代理处理
+        if resin_sticky and proxy_str:
+            resin_account = (
+                secrets.token_hex(6)
+                if hasattr(secrets, "token_hex")
+                else os.urandom(3).hex()
+            )
+            proxy_str = _build_resin_proxy(proxy_str, resin_platform, resin_account)
 
         _print_with_stats_clear(
             f"[{datetime.now().strftime('%H:%M:%S')}] 开始注册 (代理: {proxy_str or '直连'})",
@@ -613,6 +660,20 @@ def main() -> None:
     proxy_file_path = args.proxy_file or ctx.PROXY_FILE
     rotator = ctx.ProxyRotator(ctx._load_proxies(proxy_file_path))
     effective_single_proxy = args.proxy or ctx.SINGLE_PROXY or None
+
+    # 处理 Resin 粘性代理
+    effective_resin_sticky = (
+        args.resin_sticky if args.resin_sticky is not None else RESIN_STICKY
+    )
+    effective_resin_platform = (
+        args.resin_platform if args.resin_platform else RESIN_PLATFORM
+    )
+
+    # 如果启用 Resin 粘性代理且配置了 RESIN_URL，使用 RESIN_URL
+    if effective_resin_sticky and RESIN_URL:
+        effective_single_proxy = RESIN_URL
+        rotator = ctx.ProxyRotator([])  # 清空代理列表
+
     thread_count = _resolve_thread_count(args.threads)
     batch_count = _resolve_batch_count(args.count)
     try:
@@ -657,6 +718,8 @@ def main() -> None:
                 sleep_min=sleep_min,
                 sleep_max=sleep_max,
                 stop_event=stop_event,
+                resin_sticky=effective_resin_sticky,
+                resin_platform=effective_resin_platform,
             )
         else:
             _run_loop_mode(
@@ -666,6 +729,8 @@ def main() -> None:
                 sleep_min=sleep_min,
                 sleep_max=sleep_max,
                 stop_event=stop_event,
+                resin_sticky=effective_resin_sticky,
+                resin_platform=effective_resin_platform,
             )
     finally:
         stop_event.set()
