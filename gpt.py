@@ -388,13 +388,18 @@ def _prefetch_active_emails(
     else:
         # 首先检查已购邮箱
         print(f"\n[*] [预检测] 首先检查已购邮箱...")
-        proxy = rotator.next() if len(rotator) > 0 else None
 
-        # 构建 Resin 粘性代理
-        effective_proxy = proxy
-        if resin_sticky and proxy:
+        # 构建 Resin 粘性代理（如果有配置）
+        effective_proxy = None
+        if resin_sticky and RESIN_URL:
             resin_account = secrets.token_hex(6)
-            effective_proxy = _build_resin_proxy(proxy, resin_platform, resin_account)
+            effective_proxy = _build_resin_proxy(
+                RESIN_URL, resin_platform, resin_account
+            )
+            print(f"[*] [预检测] 使用 Resin 粘性代理: {resin_account}")
+        else:
+            proxy = rotator.next() if len(rotator) > 0 else None
+            effective_proxy = proxy
 
         proxies = (
             {"http": effective_proxy, "https": effective_proxy}
@@ -430,12 +435,15 @@ def _prefetch_active_emails(
                 proxy = rotator.next() if len(rotator) > 0 else None
 
                 # 构建 Resin 粘性代理
-                effective_proxy = proxy
-                if resin_sticky and proxy:
+                effective_proxy = None
+                if resin_sticky and RESIN_URL:
                     resin_account = secrets.token_hex(6)
                     effective_proxy = _build_resin_proxy(
-                        proxy, resin_platform, resin_account
+                        RESIN_URL, resin_platform, resin_account
                     )
+                    print(f"[*] [预检测] 使用 Resin 粘性代理: {resin_account}")
+                elif proxy:
+                    effective_proxy = proxy
 
                 proxies = (
                     {"http": effective_proxy, "https": effective_proxy}
@@ -3094,13 +3102,6 @@ def main() -> None:
 
     proxy_file_path = args.proxy_file or PROXY_FILE
     proxy_list = _load_proxies(proxy_file_path)
-    rotator = ProxyRotator(proxy_list)
-
-    effective_single_proxy = args.proxy or SINGLE_PROXY or None
-
-    # 如果配置了 RESIN_URL 且启用粘性代理，使用 RESIN_URL 作为代理
-    if effective_resin_sticky and RESIN_URL:
-        effective_single_proxy = RESIN_URL
 
     effective_resin_sticky = (
         args.resin_sticky if args.resin_sticky is not None else RESIN_STICKY
@@ -3108,6 +3109,15 @@ def main() -> None:
     effective_resin_platform = (
         args.resin_platform if args.resin_platform else RESIN_PLATFORM
     )
+
+    # 如果配置了 RESIN_URL 且启用粘性代理，使用 RESIN_URL 作为代理，清空 rotator
+    if effective_resin_sticky and RESIN_URL:
+        effective_single_proxy = RESIN_URL
+        proxy_list = []  # 清空代理列表，使用 RESIN_URL
+
+    rotator = ProxyRotator(proxy_list)
+
+    effective_single_proxy = args.proxy or SINGLE_PROXY or None
 
     thread_count = args.threads
     if BATCH_THREADS and thread_count == 1:
