@@ -1,58 +1,18 @@
-import json
-import os
-import re
-import sys
+from gpt_register.cli import _worker, main
+from gpt_register.context import (
+    ActiveEmailQueue,
+    EmailQueue,
+    ProxyRotator,
+    RegistrationStats,
+    _load_proxies,
+)
+from gpt_register.mail import _extract_otp_code
+from gpt_register.oauth import _jwt_claims_no_verify, _post_form, submit_callback_url
 import time
-import uuid
-import math
-import random
-import string
-import secrets
-import hashlib
-import base64
-import threading
-import argparse
-import concurrent.futures
-from datetime import datetime, timezone, timedelta
-from urllib.parse import urlparse, parse_qs, urlencode, quote
-from dataclasses import dataclass
-from typing import Any, Dict, Optional, List
-import secrets
-import hashlib
-import base64
-import urllib.parse
-import ssl
-import urllib.request
-import urllib.error
-import urllib.parse
 
-from curl_cffi import requests
+if __name__ == "__main__":
+    main()
 
-
-def _redact_proxy(proxy_str: str) -> str:
-    """脱敏代理凭证"""
-    if not proxy_str:
-        return "直连"
-    parsed = urllib.parse.urlsplit(proxy_str)
-    if parsed.username is not None:
-        host = parsed.hostname or ""
-        port = f":{parsed.port}" if parsed.port else ""
-        return f"{parsed.scheme}://***@{host}{port}"
-    return proxy_str
-
-
-def _build_resin_proxy(resin_url: str, platform: str, account: str) -> str:
-    """将 Resin 网关地址转换为粘性代理 URL (V1 格式: Platform.Account:token@host:port)"""
-    parsed = urllib.parse.urlparse(resin_url)
-    token = parsed.username or parsed.password or ""
-    host = parsed.hostname or ""
-    port = parsed.port or (443 if parsed.scheme == "https" else 80)
-    username = urllib.parse.quote(f"{platform}.{account}", safe="")
-    password = urllib.parse.quote(token, safe="")
-    return f"{parsed.scheme}://{username}:{password}@{host}:{port}"
-
-
-# ==========================================
 # Cloudflare Temp Email API
 # ==========================================
 
