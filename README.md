@@ -312,12 +312,14 @@ uv run python gpt.py
 
 ### 7. Resin 粘性代理注册
 
-```bash
+```env
 # 方式一：.env 配置
 RESIN_URL=http://token@resin-host:2260
 RESIN_PLATFORM=US
 RESIN_STICKY=true
+```
 
+```bash
 uv run python gpt.py --count 10
 
 # 方式二：命令行参数
