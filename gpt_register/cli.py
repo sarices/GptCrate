@@ -27,7 +27,9 @@ def _disable_email_on_failure(email: str, tag: str = "") -> None:
     else:
         # 如果本地没有凭据，尝试从已购邮箱列表中查找
         try:
-            purchased_mails, err = mail.luckmail_get_all_purchased_emails(user_disabled=0)
+            purchased_mails, err = mail.luckmail_get_all_purchased_emails(
+                user_disabled=0
+            )
             if not err and purchased_mails:
                 for purchase in purchased_mails:
                     if purchase.get("email_address") == email:
@@ -40,6 +42,7 @@ def _disable_email_on_failure(email: str, tag: str = "") -> None:
                         break
         except Exception as e:
             print(f"{tag} [Warning] 查找并禁用邮箱时出错: {email}, {e}")
+
 
 def _save_result(token_json: str, password: str, proxy_str: Optional[str]) -> None:
     """线程安全地保存注册结果"""
@@ -73,7 +76,11 @@ def _save_result(token_json: str, password: str, proxy_str: Optional[str]) -> No
             print(f"[*] 本地 token 文件已删除: {file_name}")
 
     if account_email and password:
-        accounts_file = os.path.join(ctx.TOKEN_OUTPUT_DIR, "accounts.txt") if ctx.TOKEN_OUTPUT_DIR else "./tokens/accounts.txt"
+        accounts_file = (
+            os.path.join(ctx.TOKEN_OUTPUT_DIR, "accounts.txt")
+            if ctx.TOKEN_OUTPUT_DIR
+            else "./tokens/accounts.txt"
+        )
         with ctx._file_write_lock:
             os.makedirs(os.path.dirname(accounts_file), exist_ok=True)
             with open(accounts_file, "a", encoding="utf-8") as af:
@@ -82,6 +89,7 @@ def _save_result(token_json: str, password: str, proxy_str: Optional[str]) -> No
 
     if account_email:
         mail.delete_temp_email(account_email, proxies=ctx.build_proxies(proxy_str))
+
 
 def _print_with_stats_clear(message: str, tag: str = ""):
     """打印消息（统计行固定在底部，不需要清除）"""
@@ -127,7 +135,9 @@ def _print_runtime_summary(
         print(f"  API 地址: {ctx.HOTMAIL007_API_URL}")
         print(f"  邮箱类型: {ctx.HOTMAIL007_MAIL_TYPE}")
         print(f"  收信模式: {ctx.HOTMAIL007_MAIL_MODE.upper()}")
-        check_proxy_str = effective_single_proxy or (rotator.next() if len(rotator) > 0 else None)
+        check_proxy_str = effective_single_proxy or (
+            rotator.next() if len(rotator) > 0 else None
+        )
         proxies_check = ctx.build_proxies(check_proxy_str)
         bal, bal_err = mail.hotmail007_get_balance(proxies=proxies_check)
         if bal is not None:
@@ -148,7 +158,9 @@ def _prepare_file_email_queue() -> None:
         return
     ctx._email_queue = ctx.EmailQueue(ctx.ACCOUNTS_FILE)
     if len(ctx._email_queue) == 0:
-        print(f"[Error] 邮箱文件 {ctx.ACCOUNTS_FILE} 为空或不存在，请先填入邮箱地址（一行一个）")
+        print(
+            f"[Error] 邮箱文件 {ctx.ACCOUNTS_FILE} 为空或不存在，请先填入邮箱地址（一行一个）"
+        )
         raise SystemExit(0)
     print(f"[*] 从 {ctx.ACCOUNTS_FILE} 加载了 {len(ctx._email_queue)} 个邮箱")
 
@@ -202,14 +214,20 @@ def _apply_check_mode_batch_target(
 ) -> Optional[int]:
     if not enabled:
         return batch_count
-    check_proxy = effective_single_proxy or (rotator.next() if len(rotator) > 0 else None)
+    check_proxy = effective_single_proxy or (
+        rotator.next() if len(rotator) > 0 else None
+    )
     stats = oauth.check_codex_tokens(proxies=ctx.build_proxies(check_proxy))
     valid_count = stats.get("valid", 0)
     if valid_count >= ctx.AUTO_REGISTER_THRESHOLD:
-        print(f"[*] 当前可用 token {valid_count} 个，已达到阈值 {ctx.AUTO_REGISTER_THRESHOLD}，不执行自动注册")
+        print(
+            f"[*] 当前可用 token {valid_count} 个，已达到阈值 {ctx.AUTO_REGISTER_THRESHOLD}，不执行自动注册"
+        )
         raise SystemExit(0)
     need_count = ctx.AUTO_REGISTER_THRESHOLD - valid_count
-    print(f"[*] 当前可用 token {valid_count} 个，低于阈值 {ctx.AUTO_REGISTER_THRESHOLD}，开始自动注册，目标补足 {need_count} 个")
+    print(
+        f"[*] 当前可用 token {valid_count} 个，低于阈值 {ctx.AUTO_REGISTER_THRESHOLD}，开始自动注册，目标补足 {need_count} 个"
+    )
     return need_count
 
 
@@ -283,7 +301,16 @@ def _spawn_worker_threads(
     for tid in range(1, worker_count + 1):
         thread = threading.Thread(
             target=_worker,
-            args=(tid, rotator, single_proxy, sleep_min, sleep_max, count_target, remaining, stop_event),
+            args=(
+                tid,
+                rotator,
+                single_proxy,
+                sleep_min,
+                sleep_max,
+                count_target,
+                remaining,
+                stop_event,
+            ),
             daemon=True,
         )
         threads.append(thread)
@@ -386,6 +413,7 @@ def _run_loop_mode(
         for thread in threads:
             thread.join(timeout=5)
 
+
 def _worker(
     worker_id: int,
     rotator: ctx.ProxyRotator,
@@ -401,7 +429,11 @@ def _worker(
     local_round = 0
 
     while not stop_event.is_set():
-        if ctx.EMAIL_MODE == "file" and ctx._email_queue is not None and len(ctx._email_queue) == 0:
+        if (
+            ctx.EMAIL_MODE == "file"
+            and ctx._email_queue is not None
+            and len(ctx._email_queue) == 0
+        ):
             _print_with_stats_clear(f"[T{worker_id}] 邮箱队列已用完，停止线程")
             break
 
@@ -415,7 +447,10 @@ def _worker(
         proxy_str = rotator.next() if len(rotator) > 0 else single_proxy
         tag = f"[T{worker_id}#{local_round}]"
 
-        _print_with_stats_clear(f"[{datetime.now().strftime('%H:%M:%S')}] 开始注册 (代理: {proxy_str or '直连'})", "")
+        _print_with_stats_clear(
+            f"[{datetime.now().strftime('%H:%M:%S')}] 开始注册 (代理: {proxy_str or '直连'})",
+            "",
+        )
 
         email_used = None
         fail_reason = None
@@ -455,7 +490,11 @@ def _worker(
                 # 注册失败时禁用邮箱
                 if ctx.EMAIL_MODE == "luckmail" and email_used:
                     _disable_email_on_failure(email_used, tag)
-                if ctx.EMAIL_MODE == "file" and ctx._email_queue is not None and len(ctx._email_queue) == 0:
+                if (
+                    ctx.EMAIL_MODE == "file"
+                    and ctx._email_queue is not None
+                    and len(ctx._email_queue) == 0
+                ):
                     _print_with_stats_clear("邮箱队列已用完，停止线程", tag)
                     break
 
@@ -485,49 +524,85 @@ def _worker(
 
     return local_success
 
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="OpenAI 自动注册脚本")
     parser.add_argument(
         "--proxy", default=None, help="单个代理地址，如 http://127.0.0.1:7890"
     )
     parser.add_argument(
-        "--proxy-file", default=None,
-        help="代理列表文件路径 (每行一个代理)，批量注册时自动轮换"
+        "--proxy-file",
+        default=None,
+        help="代理列表文件路径 (每行一个代理)，批量注册时自动轮换",
     )
     parser.add_argument("--once", action="store_true", help="只运行一次")
     parser.add_argument(
-        "--count", type=int, default=None,
-        help="批量注册数量，如 --count 10 注册10个账号"
+        "--count",
+        type=int,
+        default=None,
+        help="批量注册数量，如 --count 10 注册10个账号",
     )
     parser.add_argument(
-        "--threads", type=int, default=1,
-        help="并发线程数 (默认1)，配合 --count 或循环模式使用"
+        "--threads",
+        type=int,
+        default=1,
+        help="并发线程数 (默认1)，配合 --count 或循环模式使用",
     )
-    parser.add_argument("--check", action="store_true", help="检测 auths 目录下 codex token 状态")
+    parser.add_argument(
+        "--check", action="store_true", help="检测 auths 目录下 codex token 状态"
+    )
     parser.add_argument("--sleep-min", type=int, default=5, help="循环模式最短等待秒数")
     parser.add_argument(
         "--sleep-max", type=int, default=30, help="循环模式最长等待秒数"
     )
     parser.add_argument(
-        "--email-mode", default=None, choices=["cf", "hotmail007", "file", "luckmail"],
-        help="邮箱模式: file=从accounts.txt读取, cf=Cloudflare自有域名, hotmail007=API拉取微软邮箱, luckmail=API拉取已购邮箱 (默认读.env ctx.EMAIL_MODE)"
+        "--email-mode",
+        default=None,
+        choices=["cf", "hotmail007", "file", "luckmail"],
+        help="邮箱模式: file=从accounts.txt读取, cf=Cloudflare自有域名, hotmail007=API拉取微软邮箱, luckmail=API拉取已购邮箱 (默认读.env ctx.EMAIL_MODE)",
     )
     parser.add_argument(
-        "--accounts-file", default=None,
-        help="邮箱列表文件路径 (每行一个邮箱)，配合 --email-mode file 使用 (默认 accounts.txt)"
-    )
-    parser.add_argument("--hotmail007-key", default=None, help="Hotmail007 API Key (覆盖.env)")
-    parser.add_argument(
-        "--hotmail007-type", default=None,
-        help="Hotmail007 邮箱类型，如 'outlook Trusted Graph' (覆盖.env)"
+        "--accounts-file",
+        default=None,
+        help="邮箱列表文件路径 (每行一个邮箱)，配合 --email-mode file 使用 (默认 accounts.txt)",
     )
     parser.add_argument(
-        "--hotmail007-mail-mode", default=None, choices=["graph", "imap"],
-        help="Hotmail007 收信模式: graph=Microsoft Graph API, imap=IMAP协议 (默认graph)"
+        "--hotmail007-key", default=None, help="Hotmail007 API Key (覆盖.env)"
     )
-    parser.add_argument("--luckmail-key", default=None, help="LuckMail API Key (覆盖.env)")
-    parser.add_argument("--luckmail-auto-buy", action="store_true", help="LuckMail 自动购买邮箱")
-    parser.add_argument("--luckmail-max-retry", type=int, default=None, help="LuckMail 购买邮箱时的最大重试次数 (默认3)")
+    parser.add_argument(
+        "--hotmail007-type",
+        default=None,
+        help="Hotmail007 邮箱类型，如 'outlook Trusted Graph' (覆盖.env)",
+    )
+    parser.add_argument(
+        "--hotmail007-mail-mode",
+        default=None,
+        choices=["graph", "imap"],
+        help="Hotmail007 收信模式: graph=Microsoft Graph API, imap=IMAP协议 (默认graph)",
+    )
+    parser.add_argument(
+        "--luckmail-key", default=None, help="LuckMail API Key (覆盖.env)"
+    )
+    parser.add_argument(
+        "--luckmail-auto-buy", action="store_true", help="LuckMail 自动购买邮箱"
+    )
+    parser.add_argument(
+        "--luckmail-max-retry",
+        type=int,
+        default=None,
+        help="LuckMail 购买邮箱时的最大重试次数 (默认3)",
+    )
+    parser.add_argument(
+        "--resin-sticky",
+        action="store_true",
+        default=None,
+        help="启用 Resin 粘性代理（整个注册流程使用同一个出口 IP），可覆盖.env RESIN_STICKY",
+    )
+    parser.add_argument(
+        "--resin-platform",
+        default=None,
+        help="Resin Platform 名称（默认: Default），可覆盖.env RESIN_PLATFORM",
+    )
     args = parser.parse_args()
 
     try:
